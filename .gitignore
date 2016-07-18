@@ -1,0 +1,11 @@
+bin/
+include/
+lib/
+.Python
+.yardoc/
+doc/
+share/
+pip-selfcheck.json
+.vagrant/
+tester.yml
+.terraform/
