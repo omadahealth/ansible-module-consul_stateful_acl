@@ -9,3 +9,4 @@ pip-selfcheck.json
 .vagrant/
 tester.yml
 .terraform/
+etc/
