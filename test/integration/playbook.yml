@@ -1,0 +1,133 @@
+---
+
+- name: Test 'consul_stateful_acl' module
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    example_consul_server_config:
+      ui: yes
+      server: yes
+      bootstrap: yes
+      acl_datacenter: dc1
+      acl_master_token: 2AA112C0-783B-4B17-A949-37CA27DE4732
+      acl_default_policy: "deny"
+      datacenter: dc1
+      data_dir: "/tmp/example_consul_server"
+      log_level: debug
+      enable_syslog: no
+      ports:
+        http: 8500
+      addresses:
+        http: 0.0.0.0
+        dns: 0.0.0.0
+  tasks:
+    - block:
+      - block:
+          - name: Ensure example cluster data directory
+            file:
+              path: "{{ example_consul_server_config.data_dir }}"
+              state: directory
+            changed_when: no
+
+          - name: Ensure example cluster configuration
+            copy:
+              content: >
+                {{ example_consul_server_config | to_json }}
+              dest: /tmp/example_consul_server-config.json
+            changed_when: no
+
+          - name: Start consul server 
+            shell: >
+              consul agent -config-file /tmp/example_consul_server-config.json
+            async: 1000
+            poll: 0
+            register: consul_agent_async
+            changed_when: no
+
+          - wait_for:
+              port: 8500
+              delay: 1
+              timeout: 15
+        rescue:
+          - fail: msg="Unable to setup local consul server!"
+
+      - name: Initial (fresh) task execution [should change]
+        consul_stateful_acl:
+          user: foo
+          host: http://localhost:8500
+          mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
+        register: initial_consul_acl_task
+
+      - assert:
+          that:
+            - initial_consul_acl_task | changed
+
+      - name: Repeat initial task execution [should not change]
+        consul_stateful_acl:
+          user: foo
+          host: http://localhost:8500
+          mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
+        register: repeat_initial_consul_acl_task
+
+      - assert:
+          that:
+            - not repeat_initial_consul_acl_task | changed
+
+      - name: Attempt to update token without passing force [should fail]
+        consul_stateful_acl:
+          user: foo
+          host: http://localhost:8500
+          mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
+          policy: ' '
+        register: update_fail_consul_task
+        ignore_errors: yes
+
+      - assert:
+          that:
+            - update_fail_consul_task | failed
+
+      - name: Attempt to update token with force [should change]
+        consul_stateful_acl:
+          user: foo
+          host: http://localhost:8500
+          mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
+          policy: ' '
+          update: yes
+        register: update_change_consul_task
+
+      - assert:
+          that:
+            - update_change_consul_task | changed
+            - update_change_consul_task.acl.policy == ' '
+
+      - name: Delete initial token
+        consul_stateful_acl:
+          user: foo
+          host: http://localhost:8500
+          mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
+          state: absent
+        register: delete_consul_acl_task
+
+      - name: Ensure token was deleted
+        uri:
+          url: "http://localhost:8500/v1/acl/info/{{ delete_consul_acl_task.acl.token }}?token={{ example_consul_server_config.acl_master_token }}"
+          return_content: yes
+        register: confirm_delete_consul_acl_task
+
+      - assert:
+          that:
+            - delete_consul_acl_task | changed
+            - confirm_delete_consul_acl_task.content == '[]'
+
+      always:
+        - name: Stop/Kill any running consul processes
+          command: pkill consul
+
+        - name: Cleanup after async job
+          async_status: jid={{ consul_agent_async.ansible_job_id }} mode=cleanup
+
+        - name: Ensure there is not any stale state leftover from previous tests
+          file:
+            path: "{{ example_consul_server_config.data_dir }}"
+            state: absent
