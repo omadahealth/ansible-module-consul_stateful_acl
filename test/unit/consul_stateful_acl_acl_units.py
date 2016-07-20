@@ -4,8 +4,9 @@ import consul
 
 import modules.consul.consul_stateful_acl as ConsulStatefulACL
 from modules.consul.consul_stateful_acl import ACL
+from modules.consul.consul_stateful_acl import ACLException
 
-DEFAULT_TOKEN_POLICY='\nkey "" {\n  policy = "read"\n}\nservice "" {\n  policy = "read"\n}\n'
+DEFAULT_TOKEN_POLICY='key "" {\n  policy = "read"\n}\nservice "" {\n  policy = "read"\n}\n'
 
 class ConsulStatefulACLClassTestCase(unittest.TestCase):
     @mock.patch('consul.Consul')
@@ -85,6 +86,41 @@ class ConsulStatefulACLClassTestCase(unittest.TestCase):
 
         the_exception = e.exception
         self.assertEquals(the_exception.message, "Unable to update token!")
+
+    def test_acl_update_exception(self):
+        '''
+        Exercise ACL.update with require_policy_match set to True
+
+        Setup a case where a ACLException will be raised
+        '''
+        known_token = 'BF30253D-22A9-4106-AA31-A6605CD6BA44'
+        remote_acls = [{'Name': 'foo', 'Rules': 'key "example/" {\n  policy = "read"\n}\nservice "example-" {\n  policy = "read"\n}\n', 'ModifyIndex': 101462, 'CreateIndex': 101462, 'Type': 'client', 'ID': known_token}]
+        attrs = { 'acl.list.return_value': remote_acls,
+                  'acl.update.return_value': known_token }
+        self.consul.configure_mock(**attrs)
+
+        with self.assertRaises(ACLException) as e:
+            self.instance.update(self.consul, force=False, require_policy_match=True)
+
+        the_exception = e.exception
+        self.assertEquals(the_exception.message, "Cannot update policy when force is not set!")
+
+    def test_acl_update_w_require_policy_match_set_False(self):
+        '''
+        Exercise ACL.update with require_policy_match set to False
+
+        Handle with grace
+        '''
+        known_token = 'BF30253D-22A9-4106-AA31-A6605CD6BA44'
+        remote_acls = [{'Name': 'foo', 'Rules': 'key "example/" {\n  policy = "read"\n}\nservice "example-" {\n  policy = "read"\n}\n', 'ModifyIndex': 101462, 'CreateIndex': 101462, 'Type': 'client', 'ID': known_token}]
+        attrs = { 'acl.list.return_value': remote_acls,
+                  'acl.update.return_value': known_token }
+        self.consul.configure_mock(**attrs)
+
+        subject = self.instance.update(self.consul, force=False, require_policy_match=False)
+
+        self.assertEquals(subject, known_token)
+        self.assertEquals(self.instance.policy, 'key "example/" {\n  policy = "read"\n}\nservice "example-" {\n  policy = "read"\n}\n')
 
     def test_acl_delete_w_remote(self):
         '''

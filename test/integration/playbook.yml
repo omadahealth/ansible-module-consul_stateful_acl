@@ -102,14 +102,29 @@
           user: foo
           host: http://localhost:8500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
-          policy: ' '
+          policy: 'service "foobar" { policy = "write" }'
           update: yes
         register: update_change_consul_task
 
       - assert:
           that:
             - update_change_consul_task | changed
-            - update_change_consul_task.acl.policy == ' '
+            - update_change_consul_task.acl.policy == 'service "foobar" { policy = "write" }'
+
+      - name: Attempt to update token without force but with require_policy_match=no
+        consul_stateful_acl:
+          user: foo
+          host: http://localhost:8500
+          mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
+          require_policy_match: no
+        register: update_require_policy_match_no_change_consul_task
+        when: not ansible_check_mode
+
+      - assert:
+          that:
+            - not (update_require_policy_match_no_change_consul_task | changed)
+            - update_require_policy_match_no_change_consul_task.acl.policy == 'service "foobar" { policy = "write" }'
+        when: not ansible_check_mode
 
       - name: Delete initial token
         consul_stateful_acl:
