@@ -46,14 +46,17 @@ class ACL():
             if (acl.get('Name') == self.name):
                 return acl
 
-    def create(self, session):
-        acl = session.acl.create(self.name, 'client', self.policy)
+    def create(self, session, check_mode=False):
+        if not check_mode:
+            acl = session.acl.create(self.name, 'client', self.policy)
+        else:
+            acl = '<brand_new_token>'
         assert acl is not None, "Unable to create token!"
         self.token = acl
         self.changed = True
         return acl
 
-    def update(self, session, force=False):
+    def update(self, session, force=False, check_mode=False):
         acl = self.match(session)
         assert acl is not None, "Unable to update token!"
         if not force and acl.get('Rules') != self.policy:
@@ -61,15 +64,21 @@ class ACL():
         elif acl.get('Rules') != self.policy and force:
             self.changed = True
         self.token = acl.get('ID')
-        return session.acl.update(self.token, self.name, 'client', self.policy)
+        if not check_mode:
+            return session.acl.update(self.token, self.name, 'client', self.policy)
+        else:
+            return self.token
 
-    def delete(self, session):
+    def delete(self, session, check_mode=False):
         acl = self.match(session)
         assert acl is not None, "Unable to delete token!"
         self.token = acl.get('ID')
         self.policy = acl.get('Rules')
         self.changed = True
-        return session.acl.destroy(self.token)
+        if not check_mode:
+            return session.acl.destroy(self.token)
+        else:
+            return self.token
 
 def get_consul_session(uri, mgmt_token, verify_ssl=True):
     parsed_uri = urlparse(uri)
@@ -95,6 +104,7 @@ def get_consul_session(uri, mgmt_token, verify_ssl=True):
 
 def execute(m):
     return_dict=dict(changed=False)
+    check_mode = m.check_mode
     try:
         assert UUID_REGEXP.match(m.params.get('mgmt_token')) is not None,\
                 "Passed token, %s, is not a valid token!" % m.params['mgmt_token']
@@ -112,14 +122,14 @@ def execute(m):
         state = m.params.get('state')
         if state == 'present':
             try:
-                acl.update(session, m.params.get('force_update'))
+                acl.update(session, m.params.get('force_update'), check_mode=check_mode)
                 msg = "ACL was successfully updated."
             except AssertionError:
                 # update raised an AssertionError because no ACL was found, therefore we need to create it
-                acl.create(session)
+                acl.create(session, check_mode=check_mode)
                 msg = "ACL was successfully created."
         else:
-            acl.delete(session)
+            acl.delete(session, check_mode=check_mode)
             msg = "ACL was successfully deleted."
 
         return_dict = dict(msg=msg,changed=acl.changed, acl=dict(token=acl.token, policy=acl.policy, name=acl.name))
@@ -141,7 +151,7 @@ def main():
                     policy = dict(type='str',aliases=['rules']),
                     state = dict(type='str', choices=['present','absent'], default='present')
                     ),
-                supports_check_mode = False
+                supports_check_mode = True
                 )
 
     # Business logic
