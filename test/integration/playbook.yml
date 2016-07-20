@@ -29,6 +29,7 @@
               path: "{{ example_consul_server_config.data_dir }}"
               state: directory
             changed_when: no
+            always_run: yes
 
           - name: Ensure example cluster configuration
             copy:
@@ -36,21 +37,26 @@
                 {{ example_consul_server_config | to_json }}
               dest: /tmp/example_consul_server-config.json
             changed_when: no
+            always_run: yes
 
           - name: Start consul server 
             shell: >
-              consul agent -config-file /tmp/example_consul_server-config.json
+              consul agent -config-file /tmp/example_consul_server-config.json -advertise 127.0.0.1
             async: 1000
             poll: 0
             register: consul_agent_async
             changed_when: no
+            always_run: yes
 
           - wait_for:
               port: 8500
               delay: 1
               timeout: 15
+            always_run: yes
+
         rescue:
           - fail: msg="Unable to setup local consul server!"
+            always_run: yes
 
       - name: Initial (fresh) task execution [should change]
         consul_stateful_acl:
@@ -69,10 +75,12 @@
           host: http://localhost:8500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
         register: repeat_initial_consul_acl_task
+        when: not ansible_check_mode
 
       - assert:
           that:
             - not repeat_initial_consul_acl_task | changed
+        when: not ansible_check_mode
 
       - name: Attempt to update token without passing force [should fail]
         consul_stateful_acl:
@@ -82,10 +90,12 @@
           policy: ' '
         register: update_fail_consul_task
         ignore_errors: yes
+        when: not ansible_check_mode
 
       - assert:
           that:
             - update_fail_consul_task | failed
+        when: not ansible_check_mode
 
       - name: Attempt to update token with force [should change]
         consul_stateful_acl:
@@ -108,17 +118,20 @@
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
           state: absent
         register: delete_consul_acl_task
+        when: not ansible_check_mode
 
       - name: Ensure token was deleted
         uri:
           url: "http://localhost:8500/v1/acl/info/{{ delete_consul_acl_task.acl.token }}?token={{ example_consul_server_config.acl_master_token }}"
           return_content: yes
         register: confirm_delete_consul_acl_task
+        when: not ansible_check_mode
 
       - assert:
           that:
             - delete_consul_acl_task | changed
             - confirm_delete_consul_acl_task.content == '[]'
+        when: not ansible_check_mode
 
       always:
         - name: Stop/Kill any running consul processes
