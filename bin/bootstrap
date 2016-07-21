@@ -1,0 +1,28 @@
+#!/usr/bin/env python2.7
+
+import virtualenv
+import os
+
+extra_text = """
+def after_install(options, home_dir):
+    # Install dependencies
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'mock'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'ansible'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'pygithub'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'python-ldap'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'python-consul'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'docker-py'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'netaddr'])
+    subprocess.call([join(home_dir, 'bin', 'pip'),
+                     'install', 'molecule'])
+"""
+
+script = virtualenv.create_bootstrap_script(extra_text, python_version='2.7')
+exec(script)
