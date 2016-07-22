@@ -17,7 +17,7 @@
       log_level: debug
       enable_syslog: no
       ports:
-        http: 8500
+        http: 38500
       addresses:
         http: 0.0.0.0
         dns: 0.0.0.0
@@ -39,9 +39,18 @@
             changed_when: no
             always_run: yes
 
+          - name: Ensure 'unarchive' module prerequisite
+            apt:
+              name: unzip
+
+          - name: Ensure consul binary
+            unarchive:
+              src: https://releases.hashicorp.com/consul/0.6.4/consul_0.6.4_linux_amd64.zip
+              dest: /usr/local/bin
+
           - name: Start consul server 
             shell: >
-              consul agent -config-file /tmp/example_consul_server-config.json -advertise 127.0.0.1
+              /tmp/consul agent -config-file /tmp/example_consul_server-config.json -advertise 127.0.0.1
             async: 1000
             poll: 0
             register: consul_agent_async
@@ -49,7 +58,7 @@
             always_run: yes
 
           - wait_for:
-              port: 8500
+              port: 38500
               delay: 1
               timeout: 15
             always_run: yes
@@ -61,7 +70,7 @@
       - name: Initial (fresh) task execution [should change]
         consul_stateful_acl:
           user: foo
-          host: http://localhost:8500
+          host: http://localhost:38500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
         register: initial_consul_acl_task
 
@@ -72,7 +81,7 @@
       - name: Repeat initial task execution [should not change]
         consul_stateful_acl:
           user: foo
-          host: http://localhost:8500
+          host: http://localhost:38500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
         register: repeat_initial_consul_acl_task
         when: not ansible_check_mode
@@ -85,7 +94,7 @@
       - name: Attempt to update token without passing force [should fail]
         consul_stateful_acl:
           user: foo
-          host: http://localhost:8500
+          host: http://localhost:38500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
           policy: ' '
         register: update_fail_consul_task
@@ -100,7 +109,7 @@
       - name: Attempt to update token with force [should change]
         consul_stateful_acl:
           user: foo
-          host: http://localhost:8500
+          host: http://localhost:38500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
           policy: 'service "foobar" { policy = "write" }'
           update: yes
@@ -114,7 +123,7 @@
       - name: Attempt to update token without force but with require_policy_match=no
         consul_stateful_acl:
           user: foo
-          host: http://localhost:8500
+          host: http://localhost:38500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
           require_policy_match: no
         register: update_require_policy_match_no_change_consul_task
@@ -129,7 +138,7 @@
       - name: Delete initial token
         consul_stateful_acl:
           user: foo
-          host: http://localhost:8500
+          host: http://localhost:38500
           mgmt_token: "{{ example_consul_server_config.acl_master_token }}"
           state: absent
         register: delete_consul_acl_task
@@ -137,7 +146,7 @@
 
       - name: Ensure token was deleted
         uri:
-          url: "http://localhost:8500/v1/acl/info/{{ delete_consul_acl_task.acl.token }}?token={{ example_consul_server_config.acl_master_token }}"
+          url: "http://localhost:38500/v1/acl/info/{{ delete_consul_acl_task.acl.token }}?token={{ example_consul_server_config.acl_master_token }}"
           return_content: yes
         register: confirm_delete_consul_acl_task
         when: not ansible_check_mode
