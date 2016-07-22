@@ -4,6 +4,7 @@
   hosts: localhost
   connection: local
   gather_facts: no
+  become: yes
   vars:
     example_consul_server_config:
       ui: yes
